@@ -1,4 +1,9 @@
-import Container, { INTERFACE_TOKENS } from "../../src/container/Container";
+import Container from "../../src/container/Container";
+
+const INTERFACE_TOKENS = {
+	IExampleInterface: Symbol.for('IExampleInterface'),
+	// ... other interface tokens
+};
 
 // Mock classes and interfaces for testing
 interface IExampleInterface {

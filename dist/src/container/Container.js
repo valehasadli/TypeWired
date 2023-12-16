@@ -1,10 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.INTERFACE_TOKENS = void 0;
-exports.INTERFACE_TOKENS = {
-    IExampleInterface: Symbol.for('IExampleInterface'),
-    // ... other interface tokens
-};
 class Container {
     static registerSingleton(className, constructor, deps = []) {
         const instance = new constructor(...deps.map(dep => Container.resolve(dep)));
