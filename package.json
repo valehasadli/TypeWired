@@ -1,0 +1,35 @@
+{
+  "name": "typewired",
+  "version": "0.1.0",
+  "description": "A TypeScript dependency injection library",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "build": "tsc",
+    "prepublishOnly": "tsc"
+  },
+  "keywords": [
+    "typescript",
+    "dependency-injection",
+    "di",
+    "inversion-of-control",
+    "ioc"
+  ],
+  "author": "Valeh Asadli",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/valehasadli/typewired/issues"
+  },
+  "homepage": "https://github.com/valehasadli/typewired#readme",
+  "files": [
+    "dist/**/*"
+  ],
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.3.3"
+  }
+}
