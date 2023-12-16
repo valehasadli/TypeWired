@@ -1,4 +1,4 @@
-import Container, { Constructor, INTERFACE_TOKENS } from '../container/Container';
+import Container, { Constructor } from '../container/Container';
 
 // Decorator for registering a class as a singleton
 export function InjectableSingleton(...dependencies: string[]) {
