@@ -1,4 +1,4 @@
-import Container from "../../src/container/Container";
+import Container from "../../src/lib/container/Container";
 
 const INTERFACE_TOKENS = {
 	IExampleInterface: Symbol.for('IExampleInterface'),
