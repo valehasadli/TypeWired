@@ -1,10 +1,5 @@
 export type Constructor<T = any> = new (...args: any[]) => T;
 
-export const INTERFACE_TOKENS = {
-	IExampleInterface: Symbol.for('IExampleInterface'),
-	// ... other interface tokens
-};
-
 class Container {
 	private static singletons = new Map<string | symbol, any>();
 	private static transientConstructors = new Map<string, Constructor>();
