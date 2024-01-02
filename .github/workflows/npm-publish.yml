@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Add 'if' condition here to check the branch name
+    if: "!contains(github.ref, 'patch')"
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
@@ -23,6 +25,8 @@ jobs:
   publish-npm:
     needs: build
     runs-on: ubuntu-latest
+    # Add 'if' condition here as well to ensure consistency
+    if: "!contains(github.ref, 'patch')"
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
