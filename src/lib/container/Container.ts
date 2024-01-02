@@ -100,7 +100,7 @@ class Container {
 		throw new Error(`Dependency ${dep} not found`);
 	}
 
-	static async resolveAsync<T>(token: string | symbol): Promise<T> {
+	private static async resolveAsync<T>(token: string | symbol): Promise<T> {
 		if (typeof token === 'string' && Container.transientConstructors.has(token)) {
 			return this.resolveTransientAsync(token);
 		} else if (Container.singletons.has(token)) {
