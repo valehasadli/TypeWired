@@ -1,2 +1,6 @@
-test: tests/*
-feat: src/*
+test:
+  - changed-files:
+      - any-glob-to-any-file: 'tests/**'
+feat:
+  - changed-files:
+      - any-glob-to-any-file: 'src/**'
