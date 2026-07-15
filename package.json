@@ -22,7 +22,7 @@
     "async"
   ],
   "author": "Valeh Asadli",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/valehasadli/typewired/issues"
   },

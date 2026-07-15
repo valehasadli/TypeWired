@@ -282,6 +282,10 @@ class Scope {
 
 **Why aren't transients disposed by the container?** Because the container can't know when you're done with one, tracking them means unbounded growth in a long-lived process. This is a documented footgun in other ecosystems; TypeWired picks the predictable rule instead.
 
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-See [LICENSE](LICENSE).
+[MIT](LICENSE) — free for commercial and personal use, modification, and distribution.
