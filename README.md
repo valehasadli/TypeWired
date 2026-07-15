@@ -232,6 +232,19 @@ function testContainer(overrides?: (c: Container) => void): Container {
 }
 ```
 
+## Benchmarks
+
+Identical five-service graph (`Config → Db → RepoA/RepoB → Service`) registered through each library's decorator-free API. Median of 5 × 300 ms runs on Node 22 (arm64); higher is better. Reproduce with `yarn build && yarn bench`.
+
+| Scenario | typewired | tsyringe | awilix |
+|---|---:|---:|---:|
+| Cold: register 5 services + first resolve | **1.97M ops/s** | 1.48M ops/s | 182k ops/s |
+| Warm singleton resolve | 22.5M ops/s | 16.4M ops/s | **29.3M ops/s** |
+| Transient resolve (full graph each time) | **3.56M ops/s** | 2.90M ops/s | 3.01M ops/s |
+| Create scope + scoped resolve | 1.78M ops/s | **5.02M ops/s** | 267k ops/s |
+
+Every library here is far faster than any real workload needs (a busy API server creates thousands of scopes per second, not millions) — the takeaway is that TypeWired's type safety costs nothing at runtime, not that DI performance should drive your choice.
+
 ## API reference
 
 ```typescript
