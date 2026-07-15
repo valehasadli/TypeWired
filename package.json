@@ -1,24 +1,48 @@
 {
   "name": "typewired",
-  "version": "0.2.1",
-  "description": "A TypeScript dependency injection library",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "version": "1.0.0",
+  "description": "Fully type-safe dependency injection for TypeScript. Zero dependencies, no reflect-metadata, no decorators.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "build": "tsc",
-    "prepublishOnly": "tsc"
+    "typecheck": "tsc --noEmit",
+    "build": "tsup",
+    "bench": "node benchmarks/bench.mjs",
+    "prepublishOnly": "yarn typecheck && yarn test && tsup"
   },
   "keywords": [
     "typescript",
     "dependency-injection",
     "di",
     "inversion-of-control",
-    "ioc"
+    "ioc",
+    "type-safe",
+    "container",
+    "scoped",
+    "async"
   ],
   "author": "Valeh Asadli",
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/valehasadli/typewired/issues"
   },
@@ -27,9 +51,13 @@
     "dist"
   ],
   "devDependencies": {
-    "@types/jest": "^29.5.11",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.1.1",
-    "typescript": "^5.4.5"
+    "@types/jest": "^30.0.0",
+    "awilix": "^13.0.5",
+    "jest": "^30.4.2",
+    "reflect-metadata": "^0.2.2",
+    "ts-jest": "^29.4.11",
+    "tsup": "^8.5.1",
+    "tsyringe": "^4.10.0",
+    "typescript": "^5"
   }
 }

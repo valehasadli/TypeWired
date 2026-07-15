@@ -1,10 +1,22 @@
+export { createToken } from './token';
+export type { Token } from './token';
+export { Container } from './container';
+export { Scope } from './scope';
+export type {
+	AliasProvider,
+	AsyncFactoryProvider,
+	ClassProvider,
+	FactoryProvider,
+	Lifetime,
+	TokensFor,
+	ValueProvider,
+} from './types';
 export {
-	InjectableInterface,
-	InjectableInterfaceAsync,
-	InjectableSingleton,
-	InjectableSingletonAsync,
-	InjectableTransient,
-	InjectableTransientAsync
-} from './lib/decorators/Injectable';
-
-export { default as Container } from './lib/container/Container';
+	AsyncResolutionRequiredError,
+	CircularDependencyError,
+	ContainerDisposedError,
+	InvalidProviderError,
+	ScopedResolutionError,
+	TypeWiredError,
+	UnregisteredTokenError,
+} from './errors';

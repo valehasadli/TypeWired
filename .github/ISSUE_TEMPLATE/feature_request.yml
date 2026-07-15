@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an idea or API improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that the current API makes hard?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        What would the API look like? Note the project's constraints: zero
+        runtime dependencies, no reflect-metadata/decorators, and wrong wiring
+        must stay a compile-time error.
+      render: typescript
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

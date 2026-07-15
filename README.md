@@ -1,16 +1,39 @@
-## TypeWired
+# TypeWired
 
-TypeWired is a TypeScript library providing powerful and flexible dependency injection (DI) akin to the Spring framework for Java. It allows easy management of dependencies in TypeScript applications, enabling cleaner and more maintainable codebases.
+**Fully type-safe dependency injection for TypeScript. Zero dependencies, no `reflect-metadata`, no decorators.**
 
-Features
-- **Spring-Like DI:** Familiar DI experience for those accustomed to Java Spring.
-- **Singleton, Transient, and Interface Registrations:** Manage the lifecycle of your services easily with both synchronous and asynchronous options.
-- **Decorators:** Streamline the registration of services and interfaces with both sync and async decorators.
-- **Type Safety:** Fully leverage TypeScript's type system for safer code.
-- **Asynchronous Support:** Register and resolve dependencies that require asynchronous operations, such as database connections or HTTP requests.
+TypeWired is a dependency injection container where the type checker does the wiring review. Every service is identified by a typed token, every dependency list is checked against the constructor it feeds, and `resolve()` returns the right type without a single cast. If your dependency graph compiles, it resolves.
 
-### Installation
-Install `typewired` using npm or yarn:
+```typescript
+import { Container, createToken } from 'typewired';
+
+const Db    = createToken<Database>('Database');
+const Users = createToken<UserRepo>('UserRepo');
+
+const container = new Container()
+    .register(Db,    { useAsyncFactory: () => Database.connect(process.env.DATABASE_URL!) })
+    .register(Users, { useClass: UserRepo, deps: [Db] });
+
+const users = await container.resolveAsync(Users); // typed UserRepo — no cast, no string keys
+```
+
+## Why TypeWired
+
+Most TypeScript DI libraries make a trade you shouldn't have to make:
+
+- **tsyringe / InversifyJS** infer dependencies from constructor metadata, which requires the `reflect-metadata` polyfill, `experimentalDecorators`, and `emitDecoratorMetadata` — build-system coupling that breaks under esbuild/SWC setups that don't emit decorator metadata, and interface types are erased anyway, so you end up with token indirection regardless.
+- **awilix** avoids decorators but keys services by strings, so the type system can't check your wiring: a typo or a wrong-type registration is a runtime error.
+
+TypeWired takes a third path: **explicit registration with compile-time verification.**
+
+- **Wrong wiring doesn't compile.** `deps` tuples are checked against the constructor or factory signature they feed. Registering a class against a token whose interface it doesn't implement is a compile error. So is passing deps in the wrong order.
+- **No magic.** No decorators, no metadata reflection, no module-load side effects, no bundler/minifier hazards (nothing depends on class names). Works identically under tsc, esbuild, SWC, and Bun.
+- **Honest async.** Async factories are first-class. Concurrent resolution of an async singleton shares one in-flight construction — your database connects once, no matter how many parts of the app boot in parallel.
+- **Production lifecycle.** Request scoping, deterministic LIFO disposal, `await using` support, and captive-dependency detection (a singleton that tries to grab a per-request service throws instead of silently freezing the first request's state into an app-lifetime object).
+- **Great errors.** Every resolution error carries the full path: `No registration found for token "DbUrl" (while resolving UserRepo → Database → DbUrl)`. Circular graphs report the cycle: `Circular dependency detected: A → B → A`.
+- **Zero runtime dependencies.** The entire library is a few small files.
+
+## Installation
 
 ```bash
 npm install typewired
@@ -18,243 +41,264 @@ npm install typewired
 yarn add typewired
 ```
 
-### Basic Usage
+Requires TypeScript 5+ and Node.js 20+ (for `Symbol.asyncDispose`; the container itself runs on Node 18).
 
-### Example 1: Interface Injection
+## Core concepts
 
-**Defining an Interface and its Implementation**
+### Tokens
+
+A token is a typed identity for a service. It carries the type at compile time and a unique `symbol` at runtime — two tokens can never collide, even with the same description.
 
 ```typescript
-// ILoggerService.ts
-export interface ILoggerService {
-    log(message: string): void;
+interface Mailer {
+    send(to: string, body: string): Promise<void>;
 }
 
-// ConsoleLoggerService.ts
-import { ILoggerService } from './ILoggerService';
-
-export class ConsoleLoggerService implements ILoggerService {
-    log(message: string) {
-        console.log(message);
-    }
-}
+const MailerToken = createToken<Mailer>('Mailer');
 ```
-**Registering and Resolving the Interface**
+
+Interfaces are erased at runtime in TypeScript; tokens are how an interface gets a runtime identity. There is no separate "interface binding" API — binding an interface is just registering an implementation against the interface's token.
+
+### Providers
+
+Four ways to tell the container how to produce a value:
+
+```typescript
+container.register(ConfigToken, { useValue: loadedConfig });                     // an existing value
+container.register(MailerToken, { useClass: SmtpMailer, deps: [ConfigToken] }); // construct a class
+container.register(QueueToken,  { useFactory: (cfg: Config) => new Queue(cfg.queueUrl), deps: [ConfigToken] });
+container.register(DbToken,     { useAsyncFactory: (cfg: Config) => Database.connect(cfg.dbUrl), deps: [ConfigToken] });
+container.register(LogToken,    { useToken: ConsoleLogToken });                 // alias to another token
+```
+
+`deps` is a tuple of tokens matched **positionally and by type** against the constructor/factory parameters. Omit it only when there are no parameters — the compiler enforces both rules.
+
+### Lifetimes
+
+| Lifetime | Instances | Typical use |
+|---|---|---|
+| `singleton` *(default)* | one per container | config, connection pools, clients, repositories |
+| `scoped` | one per scope | request context, unit-of-work, per-request logger |
+| `transient` | one per resolution | stateful builders, jobs, anything not shareable |
+
+```typescript
+container.register(CtxToken, { useClass: RequestContext, lifetime: 'scoped' });
+```
+
+### Lazy resolution
+
+Registration stores a recipe; nothing is constructed until the first `resolve`. That means **registration order never matters** — register your modules in any order, and the graph sorts itself out at resolution time. Cycles are detected and reported with the full chain instead of overflowing the stack.
+
+## A real-world example
+
+A typical HTTP service: config loads first, the database pool connects asynchronously, repositories are singletons on top of the pool, and each request gets an isolated scope that is disposed when the response goes out.
+
+**tokens.ts** — the one place your app names its services:
+
+```typescript
+import { createToken } from 'typewired';
+
+export const Config      = createToken<AppConfig>('AppConfig');
+export const Db          = createToken<Pool>('DbPool');
+export const UserRepo    = createToken<UserRepository>('UserRepository');
+export const MatchRepo   = createToken<MatchRepository>('MatchRepository');
+export const RequestCtx  = createToken<RequestContext>('RequestContext');
+export const UnitOfWork  = createToken<Uow>('UnitOfWork');
+```
+
+**container.ts** — the composition root:
 
 ```typescript
 import { Container } from 'typewired';
-import { ILoggerService } from './ILoggerService';
-import { ConsoleLoggerService } from './ConsoleLoggerService';
+import { Pool } from 'pg';
+import { Config, Db, UserRepo, MatchRepo, RequestCtx, UnitOfWork } from './tokens';
 
-const LOGGER_SERVICE_TOKEN = Symbol.for('ILoggerService');
-
-// Registering the interface with its implementation
-Container.registerInterface(LOGGER_SERVICE_TOKEN, ConsoleLoggerService);
-
-// Resolving the interface
-const loggerService = Container.resolveInterface<ILoggerService>(LOGGER_SERVICE_TOKEN);
-loggerService.log('This is an interface injection example.');
-```
-
-### Example 2: Singleton Injection
-
-Singletons are instantiated once, and the same instance is reused across the application.
-
-**Defining a Singleton Service**
-
-```typescript
-// AuthService.ts
-export class AuthService {
-    private user: string | null = null;
-
-    login(user: string) {
-        this.user = user;
-        console.log(`User ${user} logged in`);
-    }
-
-    getCurrentUser() {
-        return this.user;
-    }
+export function buildContainer(): Container {
+    return new Container()
+        .register(Config, { useFactory: loadConfigFromEnv })
+        .register(Db, {
+            // Connects on first resolve. Concurrent boots share one connection
+            // attempt; a failed connect is retried on the next resolve.
+            useAsyncFactory: async (cfg: AppConfig) => {
+                const pool = new Pool({ connectionString: cfg.databaseUrl });
+                await pool.query('select 1'); // fail fast
+                return pool;
+            },
+            deps: [Config],
+        })
+        .register(UserRepo,  { useClass: UserRepository,  deps: [Db] })
+        .register(MatchRepo, { useClass: MatchRepository, deps: [Db, UserRepo] })
+        // One per request:
+        .register(RequestCtx, { useClass: RequestContext, lifetime: 'scoped' })
+        .register(UnitOfWork, {
+            useClass: Uow,
+            deps: [Db, RequestCtx],
+            lifetime: 'scoped',
+        });
 }
 ```
 
-**Registering and Resolving the Singleton**
+**server.ts** — request scoping and graceful shutdown:
 
 ```typescript
-import { Container } from 'typewired';
-import { AuthService } from './AuthService';
+const container = buildContainer();
 
-// Registering the singleton
-Container.registerSingleton('AuthService', AuthService);
+// Warm the async part of the graph before accepting traffic.
+await container.resolveAsync(Db);
 
-// Resolving the singleton
-const authService1 = Container.resolveSingleton<AuthService>('AuthService');
-authService1.login('Alice');
+app.use(async (req, res, next) => {
+    const scope = container.createScope();
+    req.scope = scope;
+    res.on('finish', () => {
+        // Disposes the request's Uow, RequestContext, ... in reverse
+        // creation order. Singletons are untouched.
+        void scope.dispose();
+    });
+    next();
+});
 
-const authService2 = Container.resolveSingleton<AuthService>('AuthService');
-console.log('Current user:', authService2.getCurrentUser()); // Output: Alice
-```
+app.get('/matches', async (req, res) => {
+    const matches = req.scope.resolve(MatchRepo);   // singleton, shared
+    const uow     = req.scope.resolve(UnitOfWork);  // this request's instance
+    res.json(await matches.findFor(uow.currentUser()));
+});
 
-### Example 3: Transient Injection
-
-Transients are re-instantiated every time they are resolved, providing a new instance.
-
-**Defining a Transient Service**
-
-```typescript
-// RequestService.ts
-export class RequestService {
-    private requestId: number;
-
-    constructor() {
-        this.requestId = Math.floor(Math.random() * 1000);
-    }
-
-    getRequestID() {
-        return this.requestId;
-    }
-}
-```
-
-**Registering and Resolving the Transient**
-
-```typescript
-import { Container } from 'typewired';
-import { RequestService } from './RequestService';
-
-// Registering the transient
-Container.registerTransient('RequestService', RequestService);
-
-// Resolving the transient
-const requestService1 = Container.resolveTransient<RequestService>('RequestService');
-console.log('Request ID 1:', requestService1.getRequestID());
-
-const requestService2 = Container.resolveTransient<RequestService>('RequestService');
-console.log('Request ID 2:', requestService2.getRequestID()); // Output will be different
-```
-
-**Asynchronous Dependency Injection**
-
-New examples demonstrating asynchronous injection will be provided to showcase how you can deal with dependencies that require async operations during their construction.
-
-### Example 4: Asynchronous Singleton Injection
-
-Defining an Async Singleton Service
-
-```typescript
-// ConfigService.ts
-export class ConfigService {
-    private config: { [key: string]: any };
-
-    async load() {
-        // Imagine this config being loaded from a remote server
-        this.config = await fetchConfigFromServer();
-    }
-
-    get(key: string) {
-        return this.config[key];
-    }
-}
-```
-
-Registering and Resolving the Async Singleton
-
-```typescript
-import { Container } from 'typewired';
-import { ConfigService } from './ConfigService';
-
-// Registering the async singleton
-await Container.registerSingletonAsync('ConfigService', ConfigService);
-
-// Resolving the async singleton
-const configService = await Container.resolveSingletonAsync<ConfigService>('ConfigService');
-await configService.load();
-console.log('Database host:', configService.get('databaseHost'));
-```
-
-### Example 5: Asynchronous Interface Injection
-
-Defining an Interface and its Async Implementation
-
-Suppose we have an interface for a data loader that fetches user data from an API.
-
-```typescript
-// IUserService.ts
-export interface IUserService {
-    loadUserData(userId: string): Promise<UserData>;
-}
-
-// UserData is a custom type representing user data
-export type UserData = {
-    id: string;
-    name: string;
-    email: string;
-    // ... other user fields
-};
-```
-
-Now, let's create an implementation of this interface that performs an asynchronous operation to load user data:
-
-```typescript
-// ApiUserService.ts
-import { IUserService, UserData } from './IUserService';
-
-export class ApiUserService implements IUserService {
-    async loadUserData(userId: string): Promise<UserData> {
-        // In a real scenario, you'd replace this with an actual API call
-        const response = await fetch(`https://api.example.com/users/${userId}`);
-        const data = await response.json();
-        return data;
-    }
-}
-```
-
-Registering and Resolving the Async Interface
-
-We need to register our interface with the async implementation and resolve it when needed. This is done asynchronously because the implementation requires an async operation.
-
-```typescript
-import { Container } from 'typewired';
-import { IUserService } from './IUserService';
-import { ApiUserService } from './ApiUserService';
-
-const USER_SERVICE_TOKEN = Symbol.for('IUserService');
-
-// Async registration of the interface with its implementation
-await Container.registerInterfaceAsync(USER_SERVICE_TOKEN, ApiUserService);
-
-// Async resolution of the interface
-const userService = await Container.resolveInterfaceAsync<IUserService>(USER_SERVICE_TOKEN);
-
-// Use the resolved service
-const userId = '123';
-userService.loadUserData(userId).then(userData => {
-    console.log(`User Name: ${userData.name}`);
-}).catch(error => {
-    console.error('Failed to load user data:', error);
+process.on('SIGTERM', async () => {
+    server.close();
+    await container.dispose(); // drains scopes, then closes the pool — LIFO
+    process.exit(0);
 });
 ```
 
-In this example, we have an IUserService interface with an asynchronous method loadUserData. The ApiUserService class implements this interface with an actual asynchronous fetch call to get the data. We then register the ApiUserService asynchronously with the DI container and resolve it when needed. The resolved service is used to load user data with the provided user ID, and since it returns a Promise, we handle it with .then() and .catch() to deal with the asynchronous result.
+Give `Uow` a `dispose()` method (or `[Symbol.dispose]` / `[Symbol.asyncDispose]`) and the container calls it automatically when its scope is disposed.
 
-### Notes
-- **Interface Injection:** Useful for when you want to abstract the concrete implementation of a service.
-- **Singleton:** Best for services that maintain state or are expensive to create.
-- **Transient:** Ideal for stateless services where each consumer should get a new instance.
+## Compile-time safety, concretely
 
-Ensure that these types of dependency injections align with your application architecture and design principles.
+All of these are **compile errors**, not runtime surprises:
 
+```typescript
+const url: string = container.resolve(DbUrlToken);        // ✅ typed by the token — no <T> cast
 
-### API Documentation
-- Container.registerSingleton(...)
-- Container.registerSingletonAsync(...)
-- Container.registerTransient(...)
-- Container.registerTransientAsync(...)
-- Container.registerInterface(...)
-- Container.registerInterfaceAsync(...)
-- Container.resolveSingleton(...)
-- Container.resolveSingletonAsync(...)
-- Container.resolveTransient(...)
-- Container.resolveTransientAsync(...)
-- Container.resolveInterface(...)
-- Container.resolveInterfaceAsync(...)
+container.register(DbUrlToken, { useValue: 42 });          // ❌ number is not string
+container.register(Db, { useClass: Database });            // ❌ deps required: ctor has parameters
+container.register(Db, { useClass: Database, deps: [Db] });// ❌ ctor wants a string, not a Database
+container.register(Db, { useClass: ConsoleLogger });       // ❌ ConsoleLogger doesn't implement Database
+container.register(MailerToken, { useToken: DbUrlToken }); // ❌ alias target type mismatch
+```
+
+The library's own test suite asserts these with `@ts-expect-error`, so the guarantees can't silently regress.
+
+## Async resolution in depth
+
+`resolveAsync()` resolves any graph; `resolve()` handles the synchronous subset.
+
+- **Mixed graphs just work.** A plain `useClass` service may depend on an async-registered token — resolve the whole thing with `resolveAsync()`.
+- **In-flight memoization.** Concurrent `resolveAsync` calls for a singleton (or a scoped instance within one scope) share a single construction. This is what makes "warm up the container from three places at boot" safe.
+- **Failures are not cached.** If an async factory throws (database briefly down), the next resolve retries instead of replaying the failure forever.
+- **Parallel construction.** Independent async dependencies construct concurrently, so two pools boot in parallel, not back-to-back.
+- **The boundary is explicit.** Calling `resolve()` on a graph containing an async node throws `AsyncResolutionRequiredError`, naming the async token and the path that reached it. Once an async singleton has settled, downstream sync resolution works again.
+
+## Scopes and disposal
+
+- `container.createScope()` creates an isolation unit; `scope.resolve()` / `scope.resolveAsync()` serve scoped instances from that scope, singletons from the root, transients fresh.
+- Disposal recognizes `[Symbol.asyncDispose]`, `[Symbol.dispose]`, or a `dispose()` method — in that priority — and runs in **reverse creation order**, so dependents are disposed before their dependencies.
+- `Scope` and `Container` both implement `Symbol.asyncDispose`:
+
+```typescript
+{
+    await using scope = container.createScope();
+    scope.resolve(RequestCtx);
+} // disposed here, even on exceptions
+```
+
+- A failing disposer never blocks the rest; errors are collected and rethrown (as `AggregateError` when multiple).
+- `dispose()` is idempotent; using a disposed container or scope throws `ContainerDisposedError`. Disposing a container first disposes its still-active scopes, and waits for in-flight async constructions so nothing leaks.
+- **Captive dependency protection:** a `singleton` whose deps reach a `scoped` token throws `ScopedResolutionError` at resolution — the alternative (silently pinning one request's context inside an app-lifetime object) is one of the nastiest DI bugs to debug in production.
+
+**Ownership rules** (deliberate, and worth knowing):
+- `useValue` instances are never disposed — you created them, you own them.
+- Transients are never tracked — tracking them in a long-lived container is an unbounded memory leak, so disposing a transient is the caller's job.
+
+## Testing
+
+No global state: every test gets a fresh container, and re-registering a token replaces it (last one wins, stale caches evicted) — which is exactly what overriding with a mock needs.
+
+```typescript
+function testContainer(overrides?: (c: Container) => void): Container {
+    const c = buildContainer();
+    c.register(Db, { useValue: fakePool }); // replace the real pool
+    overrides?.(c);
+    return c;
+}
+```
+
+## Benchmarks
+
+Identical five-service graph (`Config → Db → RepoA/RepoB → Service`) registered through each library's decorator-free API. Median of 5 × 300 ms runs on Node 22 (arm64); higher is better. Reproduce with `yarn build && yarn bench`.
+
+| Scenario | typewired | tsyringe | awilix |
+|---|---:|---:|---:|
+| Cold: register 5 services + first resolve | **1.97M ops/s** | 1.48M ops/s | 182k ops/s |
+| Warm singleton resolve | 22.5M ops/s | 16.4M ops/s | **29.3M ops/s** |
+| Transient resolve (full graph each time) | **3.56M ops/s** | 2.90M ops/s | 3.01M ops/s |
+| Create scope + scoped resolve | 1.78M ops/s | **5.02M ops/s** | 267k ops/s |
+
+Every library here is far faster than any real workload needs (a busy API server creates thousands of scopes per second, not millions) — the takeaway is that TypeWired's type safety costs nothing at runtime, not that DI performance should drive your choice.
+
+## API reference
+
+```typescript
+createToken<T>(description: string): Token<T>
+
+class Container {
+    register<T>(token: Token<T>, provider: Provider<T>): this
+    resolve<T>(token: Token<T>): T
+    resolveAsync<T>(token: Token<T>): Promise<T>
+    has(token: Token<unknown>): boolean
+    createScope(): Scope
+    dispose(): Promise<void>            // also: await using
+}
+
+class Scope {
+    resolve<T>(token: Token<T>): T
+    resolveAsync<T>(token: Token<T>): Promise<T>
+    has(token: Token<unknown>): boolean
+    dispose(): Promise<void>            // also: await using
+}
+
+// Providers (lifetime: 'singleton' | 'scoped' | 'transient', default 'singleton')
+{ useValue: T }
+{ useClass: C, deps: [...tokens], lifetime? }
+{ useFactory: (...deps) => T, deps: [...tokens], lifetime? }
+{ useAsyncFactory: (...deps) => Promise<T>, deps: [...tokens], lifetime? }
+{ useToken: Token<T> }
+```
+
+**Errors** (all extend `TypeWiredError`, all messages include the resolution path):
+
+| Error | Thrown when |
+|---|---|
+| `UnregisteredTokenError` | resolving a token with no registration |
+| `CircularDependencyError` | the dependency graph contains a cycle |
+| `AsyncResolutionRequiredError` | `resolve()` reaches an async-registered or currently-constructing token |
+| `ScopedResolutionError` | a scoped token is resolved without a scope, incl. singleton → scoped (captive dependency) |
+| `ContainerDisposedError` | using a disposed container or scope |
+| `InvalidProviderError` | a registration object matches no provider shape |
+
+## Design decisions (FAQ)
+
+**Why no decorators?** Decorator-based DI registers services as an import side effect, keys them by class name (breaks under minification), and needs `reflect-metadata` plus compiler flags. Explicit registration at a composition root is one file that shows your entire object graph, works under every bundler, and lets the type checker verify the wiring — which decorators fundamentally can't do for interfaces, since they're erased.
+
+**Why is `singleton` the default lifetime?** Node services are long-lived processes where most dependencies (config, pools, clients, repositories) should be constructed once. Making the common case the default keeps registrations quiet; per-request state is an explicit `lifetime: 'scoped'`.
+
+**Why does re-registration silently win?** With string keys, silent overwrite hides typo collisions. With symbol tokens, colliding by accident is impossible — re-registering is always deliberate, and it's the primitive that test overrides are built on.
+
+**Why aren't transients disposed by the container?** Because the container can't know when you're done with one, tracking them means unbounded growth in a long-lived process. This is a documented footgun in other ecosystems; TypeWired picks the predictable rule instead.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) — free for commercial and personal use, modification, and distribution.
