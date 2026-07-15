@@ -14,10 +14,10 @@ jobs:
     # Add 'if' condition here to check the branch name
     if: "!contains(github.ref, 'patch')"
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'yarn'
       - run: yarn install --frozen-lockfile
       - run: yarn test
@@ -28,10 +28,10 @@ jobs:
     # Add 'if' condition here as well to ensure consistency
     if: "!contains(github.ref, 'patch')"
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org/
           cache: 'yarn'
       - run: yarn install --frozen-lockfile
