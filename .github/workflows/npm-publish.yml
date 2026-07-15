@@ -32,10 +32,12 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+      # No registry-url here: it writes an .npmrc with _authToken=${NODE_AUTH_TOKEN},
+      # which yarn install fatally tries to expand. OIDC trusted publishing needs
+      # no auth config — npm publish targets registry.npmjs.org by default.
       - uses: actions/setup-node@v7
         with:
           node-version: 'lts/*'
-          registry-url: https://registry.npmjs.org/
           cache: 'yarn'
       - name: Verify release tag matches package.json version
         run: |
