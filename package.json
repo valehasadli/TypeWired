@@ -1,7 +1,7 @@
 {
   "name": "typewired",
-  "version": "0.2.1",
-  "description": "A TypeScript dependency injection library",
+  "version": "1.0.0",
+  "description": "Fully type-safe dependency injection for TypeScript. Zero dependencies, no reflect-metadata, no decorators.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -15,7 +15,11 @@
     "dependency-injection",
     "di",
     "inversion-of-control",
-    "ioc"
+    "ioc",
+    "type-safe",
+    "container",
+    "scoped",
+    "async"
   ],
   "author": "Valeh Asadli",
   "license": "GPL-3.0-or-later",
