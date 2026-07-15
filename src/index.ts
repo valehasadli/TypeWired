@@ -4,6 +4,7 @@ export { Container } from './container';
 export { Scope } from './scope';
 export type {
 	AliasProvider,
+	AsyncFactoryProvider,
 	ClassProvider,
 	FactoryProvider,
 	Lifetime,
@@ -11,6 +12,7 @@ export type {
 	ValueProvider,
 } from './types';
 export {
+	AsyncResolutionRequiredError,
 	CircularDependencyError,
 	ContainerDisposedError,
 	InvalidProviderError,

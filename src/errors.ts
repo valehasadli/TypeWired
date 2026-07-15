@@ -49,6 +49,19 @@ export class ScopedResolutionError extends TypeWiredError {
 	}
 }
 
+export class AsyncResolutionRequiredError extends TypeWiredError {
+	readonly token: Token<unknown>;
+
+	constructor(token: Token<unknown>, chain: readonly Token<unknown>[]) {
+		const path = chain.length > 0 ? ` (while resolving ${formatChain([...chain, token])})` : '';
+		super(
+			`Token "${token.description}" requires asynchronous resolution${path}. ` +
+				'It is registered with useAsyncFactory or is currently being constructed asynchronously; use resolveAsync().'
+		);
+		this.token = token;
+	}
+}
+
 export class ContainerDisposedError extends TypeWiredError {
 	constructor(what: 'container' | 'scope') {
 		super(`Cannot use a disposed ${what}`);

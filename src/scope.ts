@@ -12,6 +12,8 @@ import { disposeInstances, throwDisposalErrors } from './disposal';
 export class Scope {
 	/** @internal — scoped instance cache, keyed by token id */
 	readonly instances = new Map<symbol, unknown>();
+	/** @internal — in-flight async scoped constructions */
+	readonly promises = new Map<symbol, Promise<unknown>>();
 	/** @internal — creation order; disposed in reverse */
 	readonly created: unknown[] = [];
 	private disposed = false;
@@ -29,6 +31,13 @@ export class Scope {
 		return this.container.resolveInScope(token, this);
 	}
 
+	resolveAsync<T>(token: Token<T>): Promise<T> {
+		if (this.disposed) {
+			return Promise.reject(new ContainerDisposedError('scope'));
+		}
+		return this.container.resolveInScopeAsync(token, this);
+	}
+
 	has(token: Token<unknown>): boolean {
 		return this.container.has(token);
 	}
@@ -36,6 +45,7 @@ export class Scope {
 	/** @internal — drops a cached instance after its token is re-registered */
 	evict(id: symbol): void {
 		this.instances.delete(id);
+		this.promises.delete(id);
 	}
 
 	async dispose(): Promise<void> {
@@ -44,6 +54,10 @@ export class Scope {
 		}
 		this.disposed = true;
 		this.onDisposed(this);
+		// Let in-flight async constructions settle so their instances land in
+		// `created` and get disposed instead of leaking.
+		await Promise.allSettled(this.promises.values());
+		this.promises.clear();
 		const errors = await disposeInstances(this.created);
 		this.created.length = 0;
 		this.instances.clear();

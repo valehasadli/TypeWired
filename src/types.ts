@@ -30,6 +30,11 @@ export type FactoryProvider<T, A extends readonly unknown[]> = {
 	readonly lifetime?: Lifetime;
 } & DepsFor<A>;
 
+export type AsyncFactoryProvider<T, A extends readonly unknown[]> = {
+	readonly useAsyncFactory: (...args: A) => Promise<T>;
+	readonly lifetime?: Lifetime;
+} & DepsFor<A>;
+
 /** Normalized internal form; class and factory providers collapse into `instantiable`. */
 export type Registration =
 	| { readonly kind: 'value'; readonly value: unknown }
@@ -39,4 +44,5 @@ export type Registration =
 			readonly create: (args: readonly unknown[]) => unknown;
 			readonly deps: readonly Token<unknown>[];
 			readonly lifetime: Lifetime;
+			readonly isAsync: boolean;
 	  };
